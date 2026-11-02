@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3DS Cloud Drive</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101827;color:#e8eef8;font:16px Arial,sans-serif}
+header{background:#18263b;border-bottom:3px solid #39c6b0;padding:18px 14px;text-align:center}
+h1{margin:0;font-size:26px;color:#72ead7}header p{margin:7px 0 0;color:#b8c6d9;font-size:14px}
+main{max-width:900px;margin:18px auto;padding:0 12px}.panel{background:#1b2a40;border:1px solid #334a68;border-radius:10px;padding:15px;margin-bottom:14px}
+h2{font-size:19px;margin:0 0 12px;color:#8de9d9}
+input,button{font:16px Arial,sans-serif;border-radius:6px;padding:11px;margin:4px 0;border:1px solid #526985}
+input{background:#0f1928;color:#fff;max-width:100%;width:100%}
+button{background:#2caa99;color:#061b1b;font-weight:bold;cursor:pointer;border:0;margin-right:5px}
+button.secondary{background:#425b79;color:white}button.danger{background:#b84d5c;color:white}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1;min-width:120px}
+#status{padding:10px;background:#0e1928;border-radius:6px;white-space:pre-wrap;color:#c9f6ed}
+.file{background:#122037;border:1px solid #304663;border-radius:7px;padding:10px;margin:8px 0;overflow-wrap:anywhere}
+.file strong{display:block;margin-bottom:6px}.file small{color:#afbed0}
+.preview{max-width:100%;max-height:260px;display:block;margin:8px 0;border-radius:5px}
+video,audio{max-width:100%;width:100%;margin:8px 0}
+a{color:#8de9d9}.muted{color:#afbed0;font-size:13px;line-height:1.45}
+footer{text-align:center;color:#8ea2bc;font-size:12px;padding:15px}
+</style>
+</head>
+<body>
+<header><h1>3DS CLOUD DRIVE</h1><p>Wysyłaj i przeglądaj zdjęcia, filmy oraz dźwięki</p></header>
+<main>
+<section class="panel">
+<h2>Wyślij pliki do chmury</h2>
+<input id="upload" type="file" multiple>
+<button id="send">Wyślij zaznaczone pliki</button>
+<p class="muted">Nie ma logowania. Każdy odwiedzający może wysyłać i usuwać pliki. Limit jednego pliku: 100 MB. Nie przesyłaj niczego prywatnego.</p>
+<div id="status">Łączenie z chmurą…</div>
+</section>
+<section class="panel">
+<div class="row"><h2 style="flex:2">Pliki w chmurze</h2><button id="refresh" class="secondary">Odśwież listę</button></div>
+<div id="files">Wczytywanie…</div>
+</section>
+<section class="panel">
+<h2>Zdjęcia i filmy z Nintendo 3DS</h2>
+<p class="muted">Zdjęcia JPG/JPEG i MPO pojawią się w podglądzie (MPO może wyświetlić tylko zwykły obraz, bez efektu 3D). Strona spróbuje odtworzyć filmy MP4, WebM, OGV, 3GP i AVI. Przeglądarki często nie obsługują AVI ani niektórych plików 3DS — wtedy użyj „Pobierz” albo przekonwertuj film do MP4 (H.264/AAC). Sama przeglądarka Nintendo 3DS może nie obsługiwać przesyłania plików lub odtwarzania części formatów.</p>
+</section>
+</main>
+<footer>3DS Cloud Drive · Supabase Storage</footer>
+<script>
+(function(){
+var SUPABASE_URL="https://tiricozrtwjkfobvyfjr.supabase.co";
+var SUPABASE_KEY="sb_publishable_W_sh2anTcTVqX-YzuAaKg_BsTGgGcz";
+var BUCKET="3ds-cloud";
+function el(id){return document.getElementById(id)}
+function status(s){el("status").textContent=s}
+function xhr(method,url,body,callback){
+ var x=new XMLHttpRequest();x.open(method,url,true);
+ x.setRequestHeader("apikey",SUPABASE_KEY);
+ x.setRequestHeader("Authorization","Bearer "+SUPABASE_KEY);
+ if(body!==null){x.setRequestHeader("Content-Type","application/json");}
+ x.onreadystatechange=function(){if(x.readyState===4){var data=x.responseText;try{data=JSON.parse(data)}catch(e){}callback(x.status,data);}};
+ x.send(body===null?null:body);return x;
+}
+function safeName(name){return name.replace(/[^\w.\- ()ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g,"_").replace(/\s+/g,"_");}
+function encodePath(path){return path.split("/").map(encodeURIComponent).join("/");}
+function publicUrl(path){return SUPABASE_URL+"/storage/v1/object/public/"+BUCKET+"/"+encodePath(path);}
+function uploadOne(file,done){
+ var name=(new Date().getTime())+"_"+Math.floor(Math.random()*100000)+"_"+safeName(file.name);
+ var x=new XMLHttpRequest();x.open("POST",SUPABASE_URL+"/storage/v1/object/"+BUCKET+"/"+encodePath(name),true);
+ x.setRequestHeader("apikey",SUPABASE_KEY);
+ x.setRequestHeader("Authorization","Bearer "+SUPABASE_KEY);
+ x.setRequestHeader("Content-Type",file.type||"application/octet-stream");x.setRequestHeader("x-upsert","false");
+ x.onreadystatechange=function(){if(x.readyState===4)done(x.status,x.responseText);};x.send(file);
+}
+function uploadFiles(){
+ var files=el("upload").files;if(!files||!files.length){status("Najpierw wybierz pliki.");return;}
+ var i=0,ok=0;function next(){if(i>=files.length){status("Wysłano: "+ok+" z "+files.length+" plików.");el("upload").value="";listFiles();return;}
+ var f=files[i++];status("Wysyłanie "+i+"/"+files.length+": "+f.name);
+ uploadOne(f,function(code){if(code>=200&&code<300)ok++;next();});}next();
+}
+function listFiles(){
+ status("Wczytuję listę plików…");
+ xhr("POST",SUPABASE_URL+"/storage/v1/object/list/"+BUCKET,JSON.stringify({prefix:"",limit:100,offset:0,sortBy:{column:"name",order:"asc"}}),function(code,data){
+  if(code<200||code>=300){status("Nie udało się wczytać plików ("+code+"). "+(data.message||data.error||"Sprawdź uprawnienia bucketa i klucz API."));return;}
+  var box=el("files");box.innerHTML="";
+  if(!data||!data.length){box.textContent="Brak plików. Wyślij pierwszy plik powyżej.";status("Chmura gotowa.");return;}
+  var shown=0;
+  for(var i=0;i<data.length;i++)(function(f){
+   if(!f.name||f.id===null)return;
+   shown++;var url=publicUrl(f.name),ext=f.name.toLowerCase().split(".").pop();
+   var div=document.createElement("div");div.className="file";
+   var title=document.createElement("strong");title.textContent=f.name;div.appendChild(title);
+   var meta=document.createElement("small");meta.textContent=f.metadata&&f.metadata.size?Math.round(f.metadata.size/1024)+" KB":"Plik";div.appendChild(meta);
+   if(/^(jpg|jpeg|png|gif|webp|bmp|mpo)$/.test(ext)){var img=document.createElement("img");img.className="preview";img.src=url;img.alt=f.name;img.onerror=function(){this.alt="Nie udało się wyświetlić zdjęcia — użyj Pobierz."};div.appendChild(img);}
+   else if(/^(mp4|m4v|webm|ogv|ogg|3gp|avi|mov)$/.test(ext)){var v=document.createElement("video");v.className="preview";v.controls=true;v.preload="metadata";v.src=url;v.onerror=function(){var note=document.createElement("p");note.className="muted";note.textContent="Ta przeglądarka nie obsługuje tego formatu/kodeka. Spróbuj pobrać film.";div.appendChild(note);};div.appendChild(v);}
+   else if(/^(mp3|wav|ogg|m4a|aac)$/.test(ext)){var a=document.createElement("audio");a.controls=true;a.src=url;div.appendChild(a);}
+   var link=document.createElement("p"),download=document.createElement("a");download.href=url;download.appendChild(document.createTextNode("Pobierz"));download.setAttribute("download",f.name);link.appendChild(download);div.appendChild(link);
+   var del=document.createElement("button");del.className="danger";del.textContent="Usuń";del.onclick=function(){if(window.confirm("Czy na pewno chcesz usunąć plik: "+f.name+"? Tej operacji nie można cofnąć."))deleteFile(f.name);};div.appendChild(del);
+   box.appendChild(div);
+  })(data[i]);
+  if(!shown)box.textContent="Brak plików. Wyślij pierwszy plik powyżej.";
+  status("Wczytano pliki: "+shown+".");
+ });
+}
+function deleteFile(name){
+ xhr("DELETE",SUPABASE_URL+"/storage/v1/object/"+BUCKET,JSON.stringify({prefixes:[name]}),function(code,data){
+  if(code>=200&&code<300){status("Plik usunięty.");listFiles();}
+  else status("Nie udało się usunąć pliku ("+code+"). "+(data.message||""));
+ });
+}
+el("send").onclick=uploadFiles;el("refresh").onclick=listFiles;
+listFiles();
+})();
+</script>
+</body></html>
